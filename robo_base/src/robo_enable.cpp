@@ -1,96 +1,86 @@
-#include "ros/ros.h"
-#include "std_msgs/String.h"
-#include "geometry_msgs/Twist.h"
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+#include "robo_base/RoboteqDevice.h"
+#include "robo_base/ErrorCodes.h"
+#include "robo_base/Constants.h"
 
-#include <sstream>
 #include <iostream>
-#include <stdio.h>
-#include <string.h>
+#include <string>
 
-#include "../include/robo_base/RoboteqDevice.h"
-#include "../include/robo_base/ErrorCodes.h"
-#include "../include/robo_base/Constants.h"
-#include "robo_base/robo_io.h"
-
-string response = "";
-int status;
 using namespace std;
 
+class RoboBaseModeNode : public rclcpp::Node {
+public:
+    RoboBaseModeNode() : Node("mode") {
+        // Declare and get parameters
+        this->declare_parameter<std::string>("port", "/dev/ttyUSB0");
+        this->declare_parameter<int>("mode", 0);
 
+        this->get_parameter("port", port_);
+        this->get_parameter("mode", mode_);
 
-int main(int argc, char **argv)
-{
-  ros::init(argc, argv, "mode");
-  ros::NodeHandle n;
+        RCLCPP_INFO(this->get_logger(), "Port: %s, Mode: %d", port_.c_str(), mode_);
 
-  std::string port = "/dev/ttyACM0";
-  int mode=0;
- 
+        // Connect to the Roboteq device
+        status_ = device_.Connect(port_.c_str());
+        if (status_ == 0) {
+            configureDevice();
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Failed to connect to device. Please try a different port.");
+        }
+    }
 
-  n.getParam("/mode/port", port);
-  n.getParam("/mode/mode", mode);
+private:
+    void configureDevice() {
+        RCLCPP_INFO(this->get_logger(), "CONFIGURATION MODE FOR ROBO_BASE - ROBODYNE");
 
+        if (mode_ == 0) {
+            RCLCPP_INFO(this->get_logger(), "SETTING THE CONFIGURATION TO RUN ROS");
 
- 
-  //Debug
-  //ROS_INFO("%d - %d - %d - %s", sys, enc, io, port.c_str());
+            if (device_.SetCommand(_R, 0) != RQ_SUCCESS) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to change firmware configuration for ROS.");
+            } else {
+                RCLCPP_INFO(this->get_logger(), "Firmware configuration changed for ROS.");
+            }
 
+            if (device_.SetConfig(_MXMD, 0) != RQ_SUCCESS) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to enable system for ROS.");
+            } else {
+                RCLCPP_INFO(this->get_logger(), "System enabled for ROS.");
+            }
 
-  long long unsigned int count = 0; //Frame counter
+            RCLCPP_INFO(this->get_logger(), "ROS ENABLED!");
+        } else if (mode_ == 1) {
+            RCLCPP_INFO(this->get_logger(), "SETTING THE CONFIGURATION TO RUN THE RC TRANSMITTER");
 
-  RoboteqDevice device;
-  int status = device.Connect(port.c_str());
-  
-if (status == 0){
-printf("\nCONFIGURATION MODE FOR ROBO_BASE - ROBODYNE\n");
-printf("--------------------------_MXMD------------------\n");
-if (mode==0){
-printf("\nSETTING THE CONFIGURATION TO RUN ROS\n");
-printf("--------------------------------------------\n");
-		
-		if ((status = device.SetCommand(_R, 0)) != RQ_SUCCESS)
-			cout << "Change firmware configuration - failed --> " << status << endl;}
+            if (device_.SetCommand(_R, 2) != RQ_SUCCESS) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to change firmware configuration for RC Transmitter.");
+            } else {
+                RCLCPP_INFO(this->get_logger(), "Firmware configuration changed for RC Transmitter.");
+            }
 
-		else
-			cout << "Change firmware configuration - returned --> " << status << endl; 
-             
-		
-		if ((status = device.SetConfig(_MXMD, 0)) != RQ_SUCCESS)
-			cout << "System enabled for ROS - failed --> " << status << endl;
-		else
-			cout << "System enabled for ROS - returned --> " << status << endl;
+            if (device_.SetConfig(_MXMD, 2) != RQ_SUCCESS) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to enable system for RC Transmitter.");
+            } else {
+                RCLCPP_INFO(this->get_logger(), "System enabled for RC Transmitter.");
+            }
 
-printf("\nROS ENABLED!\n");
-printf("--------------------------------------------\n");
-		exit(0);
-}
-else if(mode ==1) {
-printf("\nSETTING THE CONFIGURATION TO RUN THE RC TRANSMITTER\n");
-printf("--------------------------------------------\n");
-		
-		if ((status = device.SetCommand(_R, 2)) != RQ_SUCCESS)
-			cout << "Change firmware configuration - failed --> " << status << endl;
-		else
-			cout << "Change firmware configuration - returned --> " << status << endl;
- 
-             
-		_MXMD
-		if ((status = device.SetConfig(_MXMD, 2)) != RQ_SUCCESS)
-			cout << "System enabled for RC Transmitter - failed --> " << status << endl;
-		else
-			cout << "System enabled for Rc Transmitter - returned --> " << status << endl;
+            RCLCPP_INFO(this->get_logger(), "RC TRANSMITTER ENABLED!");
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Invalid mode specified. Use 0 for ROS or 1 for RC Transmitter.");
+        }
+    }
 
-printf("\nRC TRANSMITTER ENABLED!\n");
-printf("--------------------------------------------\n");
-		
-	exit(0);
-} 
-}_MXMD
-else if (status == 1){
+    std::string port_;
+    int mode_;
+    int status_;
+    RoboteqDevice device_;
+};
 
-printf("\n\nPLEASE TRY TO SET ANOTHER COMMUNICATION PORT!\n\n");
-	exit(0);
-}
-
-  return 0;
+int main(int argc, char** argv) {
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<RoboBaseModeNode>();
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+    return 0;
 }
